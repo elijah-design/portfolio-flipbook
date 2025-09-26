@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Elijah Design — Portfolio Flipbook</title>
+
+    <!-- PDF.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+    <style>
+        :root {
+            --bg: #0e0f12;
+            --fg: #f5f6f8;
+            --glass: rgba(255, 255, 255, .08);
+            --glass-2: rgba(255, 255, 255, .16);
+            --shadow: 0 8px 26px rgba(0, 0, 0, .38);
+            --accent: #000;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            height: 100%;
+        }
+
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--fg);
+            font-family: Montserrat, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+            display: grid;
+            grid-template-rows: 1fr auto;
+            overflow: hidden;
+            /* keep the book centered */
+        }
+
+        /* Flipbook stage */
+        #flipbook {
+            width: min(95vw, 1400px);
+            height: min(90vh, 920px);
+            margin: auto;
+            position: relative;
+            perspective: 2000px;
+            border-radius: 14px;
+            box-shadow: var(--shadow);
+            overflow: hidden;
+            background: radial-gradient(1100px 550px at 50% -10%, rgba(255, 255, 255, .06), transparent 60%);
+            touch-action: pan-y;
+            /* allow vertical page scrolls on mobile outside the flip area */
+            user-select: none;
+        }
+
+        /* Two “pages” layered like a spread */
+        .page {
+            position: absolute;
+            top: 0;
+            width: 50%;
+            height: 100%;
+            background: #111;
+            transform-origin: left center;
+            transition: transform .55s cubic-bezier(.22, .61, .36, 1), box-shadow .4s ease;
+            box-shadow: 0 1px 10px rgba(0, 0, 0, .28) inset;
+            overflow: hidden;
+            will-change: transform;
+        }
+
+        .page.right {
+            left: 50%;
+            transform-origin: right center;
+        }
+
+        .page img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: block;
+            background: #111;
+        }
+
+        /* Turned state (stack underneath) */
+        .page.flipped {
+            transform: rotateY(-180deg);
+            z-index: 0;
+        }
+
+        .page.right.flipped {
+            transform: rotateY(180deg);
+            z-index: 0;
+        }
+
+        /* Active (hover/drag) cue */
+        .page.active {
+            box-shadow: 0 10px 40px rgba(0, 0, 0, .45);
+        }
+
+        /* Glass toolbar */
+        .controls {
+            position: relative;
+            margin: 10px auto 18px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: var(--glass);
+            border: 1px solid rgba(255, 255, 255, .12);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border-radius: 10px;
+            padding: 8px;
+            width: min(95vw, 1400px);
+        }
+
+        .controls .spacer {
+            flex: 1;
+        }
+
+        .controls button,
+        .controls a.btn {
+            border: 0;
+            color: var(--fg);
+            background: var(--glass-2);
+            padding: 8px 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: transform .2s ease, box-shadow .25s ease, background .25s ease;
+            letter-spacing: .04em;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .controls button:hover,
+        .controls a.btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 10px 24px rgba(0, 0, 0, .28);
+            background: rgba(255, 255, 255, .22);
+        }
+
+        .counter {
+            font-size: 14px;
+            opacity: .9;
+            padding: 6px 10px;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, .08);
+            border: 1px solid rgba(255, 255, 255, .12);
+        }
+
+        /* Touch hint zones (optional visual debugging) */
+        /* .zone {position:absolute;top:0;bottom:0;width:16%;opacity:.05;background:red} 
+       .zone.left {left:0} .zone.right{right:0} */
+
+        @media (max-width: 900px) {
+            #flipbook {
+                width: 96vw;
+                height: 85vh;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="flipbook" aria-label="Flipbook viewer" role="region">
+        <!-- left/right pages are created dynamically -->
+        <!-- Optional click/drag zones if you want larger hit areas:
+    <div class="zone left"></div>
+    <div class="zone right"></div>
+    -->
+    </div>
+
+    <div class="controls" aria-label="Controls">
+        <button id="prev" aria-label="Previous page">⟨ Prev</button>
+        <button id="next" aria-label="Next page">Next ⟩</button>
+        <div class="spacer"></div>
+        <span class="counter"><span id="cur">1</span> / <span id="total">—</span></span>
+        <a class="btn" id="download" href="#" download>⬇ Download</a>
+        <button id="fs" aria-label="Fullscreen">⤢ Fullscreen</button>
+    </div>
+
+    <script>
+        // ---------- CONFIG ----------
+        const PDF_URL = "https://elijah-design.github.io/portfolio-flipbook/2025%20cv%20portfolio%20no%20password.pdf";
+        const DOWNLOAD_URL = PDF_URL; // same file for download
+        // ----------------------------
+
+        const flipbook = document.getElementById('flipbook');
+        const prevBtn = document.getElementById('prev');
+        const nextBtn = document.getElementById('next');
+        const fsBtn = document.getElementById('fs');
+        const curEl = document.getElementById('cur');
+        const totEl = document.getElementById('total');
+        const dlA = document.getElementById('download');
+        dlA.href = DOWNLOAD_URL;
+
+        let pdfDoc = null;
+        let total = 0;
+        let current = 1; // 1-based
+
+        // Keep references to created page elements for flipping
+        const pageEls = [];
+
+        // Render all pages as images (simple + robust)
+        async function renderAllPages() {
+            pdfjsLib.GlobalWorkerOptions.workerSrc =
+                "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+            const doc = await pdfjsLib.getDocument(PDF_URL).promise;
+            pdfDoc = doc;
+            total = doc.numPages;
+            totEl.textContent = total;
+
+            // Clear existing
+            flipbook.querySelectorAll('.page').forEach(p => p.remove());
+            pageEls.length = 0;
+
+            for (let i = 1; i <= total; i++) {
+                const page = await doc.getPage(i);
+
+                // Scale factor: tune for quality/size. 1.5 is a good visual compromise.
+                const viewport = page.getViewport({
+                    scale: 1.5
+                });
+
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+                await page.render({
+                    canvasContext: ctx,
+                    viewport
+                }).promise;
+
+                const img = new Image();
+                img.src = canvas.toDataURL('image/jpeg', 0.9);
+
+                const el = document.createElement('div');
+                el.className = 'page' + ((i % 2 === 0) ? ' right' : '');
+                if (i % 2 === 0) el.style.left = '50%';
+                el.appendChild(img);
+
+                // Initial flipped state for pages before current
+                if (i < current) el.classList.add('flipped');
+
+                flipbook.appendChild(el);
+                pageEls.push(el);
+            }
+
+            updateUI();
+        }
+
+        function updateUI() {
+            curEl.textContent = current;
+            prevBtn.disabled = current <= 1;
+            nextBtn.disabled = current >= total;
+        }
+
+        function flip(direction) {
+            if (direction === 'next') {
+                if (current >= total) return;
+                // Flip the current page to turned state
+                pageEls[current - 1]?.classList.add('flipped');
+                current++;
+            } else if (direction === 'prev') {
+                if (current <= 1) return;
+                // Unflip the previous page
+                current--;
+                pageEls[current - 1]?.classList.remove('flipped');
+            }
+            updateUI();
+        }
+
+        // Buttons
+        nextBtn.addEventListener('click', () => flip('next'));
+        prevBtn.addEventListener('click', () => flip('prev'));
+
+        // Keyboard
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight') flip('next');
+            if (e.key === 'ArrowLeft') flip('prev');
+        });
+
+        // Fullscreen
+        fsBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) flipbook.requestFullscreen?.();
+            else document.exitFullscreen?.();
+        });
+
+        // ---- Swipe / Drag gestures ----
+        let isPointerDown = false;
+        let startX = 0;
+        let startY = 0;
+        let lastX = 0;
+        const SWIPE_MIN = 40; // px threshold
+        const SWIPE_SLOPE = 1.7; // prefer horizontal (abs(dx) > 1.7*abs(dy))
+
+        // We also give a tiny “follow finger” rotate effect to the top page for feedback.
+        function setActiveTilt(dx) {
+            const topIndex = current - 1; // zero-based
+            const topPage = pageEls[topIndex];
+            if (!topPage) return;
+
+            topPage.classList.add('active');
+            // tilt limited to ~10 degrees
+            const maxTilt = 10;
+            const tilt = Math.max(-maxTilt, Math.min(maxTilt, (dx / (flipbook.clientWidth * 0.5)) * maxTilt));
+            if (dx < 0) {
+                // swiping left -> next (tilt right page)
+                topPage.style.transform += ` rotateY(${tilt}deg)`;
+            } else if (dx > 0 && topIndex > 0) {
+                // swiping right -> prev: preview unflip by tilting the previous page slightly back
+                const prevPage = pageEls[topIndex - 1];
+                if (prevPage) {
+                    prevPage.style.transform = `rotateY(${Math.min(0, tilt)}deg)`;
+                    prevPage.classList.add('active');
+                }
+            }
+        }
+
+        function clearActiveTilt() {
+            pageEls.forEach(p => {
+                p.classList.remove('active');
+                // reset transform to base (respect flipped state)
+                p.style.transform = '';
+                if (p.classList.contains('flipped')) {
+                    if (p.classList.contains('right')) p.style.transform = 'rotateY(180deg)';
+                    else p.style.transform = 'rotateY(-180deg)';
+                }
+            });
+        }
+
+        const onPointerDown = (clientX, clientY) => {
+            isPointerDown = true;
+            startX = lastX = clientX;
+            startY = clientY;
+        };
+        const onPointerMove = (clientX, clientY) => {
+            if (!isPointerDown) return;
+            lastX = clientX;
+            const dx = clientX - startX;
+            const dy = clientY - startY;
+
+            // Only show tilt if it's primarily horizontal
+            if (Math.abs(dx) > SWIPE_MIN / 3 && Math.abs(dx) > SWIPE_SLOPE * Math.abs(dy)) {
+                clearActiveTilt();
+                setActiveTilt(dx);
+            }
+        };
+        const onPointerUp = (clientX, clientY) => {
+            if (!isPointerDown) return;
+            isPointerDown = false;
+            const dx = clientX - startX;
+            const dy = clientY - startY;
+
+            clearActiveTilt();
+
+            if (Math.abs(dx) >= SWIPE_MIN && Math.abs(dx) > SWIPE_SLOPE * Math.abs(dy)) {
+                if (dx < 0) flip('next'); // swipe left
+                else flip('prev'); // swipe right
+            }
+        };
+
+        // Mouse events
+        flipbook.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            onPointerDown(e.clientX, e.clientY);
+        });
+        window.addEventListener('mousemove', (e) => onPointerMove(e.clientX, e.clientY), {
+            passive: true
+        });
+        window.addEventListener('mouseup', (e) => onPointerUp(e.clientX, e.clientY));
+
+        // Touch events
+        flipbook.addEventListener('touchstart', (e) => {
+            if (!e.touches[0]) return;
+            onPointerDown(e.touches[0].clientX, e.touches[0].clientY);
+        }, {
+            passive: true
+        });
+
+        flipbook.addEventListener('touchmove', (e) => {
+            if (!e.touches[0]) return;
+            onPointerMove(e.touches[0].clientX, e.touches[0].clientY);
+        }, {
+            passive: true
+        });
+
+        flipbook.addEventListener('touchend', (e) => {
+            const t = e.changedTouches && e.changedTouches[0];
+            onPointerUp(t ? t.clientX : lastX, t ? t.clientY : 0);
+        });
+
+        // Init
+        (async () => {
+            try {
+                await renderAllPages();
+            } catch (err) {
+                console.error('PDF load failed. Falling back to iframe.', err);
+                // Fallback: embed the PDF as-is (no flip)
+                const iframe = document.createElement('iframe');
+                iframe.src = PDF_URL;
+                iframe.style.cssText = "position:absolute;inset:0;border:0;width:100%;height:100%";
+                flipbook.innerHTML = "";
+                flipbook.appendChild(iframe);
+            }
+        })();
+    </script>
+</body>
+
+</html>
