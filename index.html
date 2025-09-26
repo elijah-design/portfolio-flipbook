@@ -1,415 +1,470 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Elijah Design — Portfolio Flipbook</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Elijah Design — Portfolio Flipbook</title>
 
-    <!-- PDF.js -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <!-- PDF.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 
-    <style>
-        :root {
-            --bg: #0e0f12;
-            --fg: #f5f6f8;
-            --glass: rgba(255, 255, 255, .08);
-            --glass-2: rgba(255, 255, 255, .16);
-            --shadow: 0 8px 26px rgba(0, 0, 0, .38);
-            --accent: #000;
-        }
+  <style>
+    :root{
+      --bg:#0e0f12; --fg:#f5f6f8;
+      --glass:rgba(255,255,255,.08); --glass-2:rgba(255,255,255,.16);
+      --stroke:rgba(255,255,255,.12); --shadow:0 8px 26px rgba(0,0,0,.38);
+      --accent:#8fd3ff;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; background:var(--bg); color:var(--fg);
+      font-family: Montserrat, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      display:grid; grid-template-rows: 1fr auto; overflow:hidden;
+    }
 
-        * {
-            box-sizing: border-box;
-        }
+    /* Stage */
+    #flipbook{
+      width:min(95vw,1400px); height:min(90vh,920px);
+      margin:auto; position:relative; perspective:2000px;
+      border-radius:14px; box-shadow:var(--shadow); overflow:hidden;
+      background: radial-gradient(1100px 550px at 50% -10%, rgba(255,255,255,.06), transparent 60%);
+      touch-action: pan-y; user-select:none;
+    }
+    /* Inner spread wrapper so we can zoom without breaking the page transforms */
+    #spread{
+      position:absolute; inset:0;
+      transform-origin:center center;
+      will-change: transform;
+    }
 
-        html,
-        body {
-            height: 100%;
-        }
+    .page{
+      position:absolute; top:0; width:50%; height:100%;
+      background:#111; transform-origin: left center;
+      transition: transform .55s cubic-bezier(.22,.61,.36,1), box-shadow .4s ease;
+      box-shadow: 0 1px 10px rgba(0,0,0,.28) inset; overflow:hidden; will-change: transform;
+      z-index:1;
+    }
+    .page.right{ left:50%; transform-origin:right center; }
+    .page img{ width:100%; height:100%; object-fit:contain; display:block; background:#111; }
+    .page.flipped{ transform: rotateY(-180deg); z-index:0; }
+    .page.right.flipped{ transform: rotateY(180deg); z-index:0; }
+    .page.active{ box-shadow: 0 10px 40px rgba(0,0,0,.45); }
 
-        body {
-            margin: 0;
-            background: var(--bg);
-            color: var(--fg);
-            font-family: Montserrat, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-            display: grid;
-            grid-template-rows: 1fr auto;
-            overflow: hidden;
-            /* keep the book centered */
-        }
+    /* Hover menu (AnyFlip-style) */
+    .menu-overlay{
+      position:absolute; top:12px; right:12px; display:flex; gap:10px;
+      opacity:0; transition:opacity .25s ease; z-index:20;
+      background:var(--glass); border:1px solid var(--stroke);
+      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+      padding:8px; border-radius:10px;
+    }
+    #flipbook:hover .menu-overlay{ opacity:1; }
+    .menu-overlay .btn{
+      border:0; color:var(--fg); background:var(--glass-2);
+      padding:8px 12px; border-radius:8px; cursor:pointer;
+      font-size:14px; font-weight:600; letter-spacing:.03em;
+      display:inline-flex; align-items:center; gap:8px;
+      transition: transform .15s ease, background .25s ease, box-shadow .25s ease;
+      text-decoration:none;
+    }
+    .menu-overlay .btn:hover{ transform:translateY(-1px); background:rgba(255,255,255,.22); box-shadow:0 8px 20px rgba(0,0,0,.28) }
+    .menu-overlay .field{
+      display:flex; align-items:center; gap:6px; background:var(--glass-2);
+      padding:6px 10px; border-radius:8px; border:1px solid var(--stroke);
+    }
+    .menu-overlay input[type="number"]{
+      width:64px; background:transparent; border:0; color:var(--fg); font-weight:600;
+      outline:none; text-align:center;
+    }
+    .counter{ font-size:14px; opacity:.9; padding:6px 10px; border-radius:8px;
+      background:rgba(255,255,255,.08); border:1px solid var(--stroke); }
 
-        /* Flipbook stage */
-        #flipbook {
-            width: min(95vw, 1400px);
-            height: min(90vh, 920px);
-            margin: auto;
-            position: relative;
-            perspective: 2000px;
-            border-radius: 14px;
-            box-shadow: var(--shadow);
-            overflow: hidden;
-            background: radial-gradient(1100px 550px at 50% -10%, rgba(255, 255, 255, .06), transparent 60%);
-            touch-action: pan-y;
-            /* allow vertical page scrolls on mobile outside the flip area */
-            user-select: none;
-        }
+    /* Bottom controls (kept minimal) */
+    .controls{
+      position:relative; margin:10px auto 18px; display:flex; align-items:center; gap:10px;
+      background:var(--glass); border:1px solid var(--stroke);
+      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+      border-radius:10px; padding:8px; width:min(95vw,1400px);
+    }
+    .controls .spacer{ flex:1 }
+    .controls button, .controls a.btn{
+      border:0; color:var(--fg); background:var(--glass-2);
+      padding:8px 14px; border-radius:8px; cursor:pointer;
+      transition: transform .2s ease, box-shadow .25s ease, background .25s ease;
+      letter-spacing:.04em; font-weight:600; text-decoration:none; display:inline-flex; align-items:center; gap:8px;
+    }
+    .controls button:hover, .controls a.btn:hover{ transform:translateY(-1px); box-shadow:0 10px 24px rgba(0,0,0,.28); background:rgba(255,255,255,.22) }
+    .counter-bottom{ composes: counter; }
 
-        /* Two “pages” layered like a spread */
-        .page {
-            position: absolute;
-            top: 0;
-            width: 50%;
-            height: 100%;
-            background: #111;
-            transform-origin: left center;
-            transition: transform .55s cubic-bezier(.22, .61, .36, 1), box-shadow .4s ease;
-            box-shadow: 0 1px 10px rgba(0, 0, 0, .28) inset;
-            overflow: hidden;
-            will-change: transform;
-        }
+    /* Thumbnail drawer */
+    .thumb-drawer{
+      position:absolute; left:0; right:0; bottom:0;
+      max-height:34%; transform: translateY(100%);
+      transition: transform .35s ease; z-index:19;
+      background: linear-gradient(180deg, rgba(0,0,0,.0), rgba(0,0,0,.45));
+      pointer-events:none;
+    }
+    .thumb-drawer.open{ transform: translateY(0); pointer-events:auto; }
+    .thumbs{
+      margin: 16px auto; padding: 12px; width:min(95vw,1400px);
+      background:var(--glass); border:1px solid var(--stroke);
+      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+      border-radius:12px; box-shadow: var(--shadow); overflow:auto;
+      display:grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap:10px;
+      max-height: calc(34vh - 32px);
+    }
+    .thumb{
+      position:relative; border-radius:8px; overflow:hidden; border:1px solid var(--stroke); cursor:pointer;
+      transition: transform .15s ease, box-shadow .2s ease, border-color .2s ease;
+      aspect-ratio: 3 / 4; background:#111;
+    }
+    .thumb img{ width:100%; height:100%; object-fit:cover; display:block; }
+    .thumb:hover{ transform: translateY(-2px); box-shadow:0 8px 18px rgba(0,0,0,.35); border-color: rgba(255,255,255,.35) }
+    .thumb.active::after{
+      content: ""; position:absolute; inset:0; border:2px solid var(--accent); border-radius:8px; box-shadow:0 0 0 2px rgba(0,0,0,.4) inset;
+    }
+    .thumb .label{
+      position:absolute; left:6px; bottom:6px; font-size:12px; font-weight:700;
+      background:rgba(0,0,0,.55); padding:2px 6px; border-radius:6px;
+    }
 
-        .page.right {
-            left: 50%;
-            transform-origin: right center;
-        }
-
-        .page img {
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
-            display: block;
-            background: #111;
-        }
-
-        /* Turned state (stack underneath) */
-        .page.flipped {
-            transform: rotateY(-180deg);
-            z-index: 0;
-        }
-
-        .page.right.flipped {
-            transform: rotateY(180deg);
-            z-index: 0;
-        }
-
-        /* Active (hover/drag) cue */
-        .page.active {
-            box-shadow: 0 10px 40px rgba(0, 0, 0, .45);
-        }
-
-        /* Glass toolbar */
-        .controls {
-            position: relative;
-            margin: 10px auto 18px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            background: var(--glass);
-            border: 1px solid rgba(255, 255, 255, .12);
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
-            border-radius: 10px;
-            padding: 8px;
-            width: min(95vw, 1400px);
-        }
-
-        .controls .spacer {
-            flex: 1;
-        }
-
-        .controls button,
-        .controls a.btn {
-            border: 0;
-            color: var(--fg);
-            background: var(--glass-2);
-            padding: 8px 14px;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: transform .2s ease, box-shadow .25s ease, background .25s ease;
-            letter-spacing: .04em;
-            font-weight: 600;
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .controls button:hover,
-        .controls a.btn:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 10px 24px rgba(0, 0, 0, .28);
-            background: rgba(255, 255, 255, .22);
-        }
-
-        .counter {
-            font-size: 14px;
-            opacity: .9;
-            padding: 6px 10px;
-            border-radius: 8px;
-            background: rgba(255, 255, 255, .08);
-            border: 1px solid rgba(255, 255, 255, .12);
-        }
-
-        /* Touch hint zones (optional visual debugging) */
-        /* .zone {position:absolute;top:0;bottom:0;width:16%;opacity:.05;background:red} 
-       .zone.left {left:0} .zone.right{right:0} */
-
-        @media (max-width: 900px) {
-            #flipbook {
-                width: 96vw;
-                height: 85vh;
-            }
-        }
-    </style>
+    @media (max-width: 900px){
+      #flipbook{ width:96vw; height:85vh; }
+      .menu-overlay{ right:8px; left:8px; flex-wrap:wrap; gap:8px; }
+    }
+  </style>
 </head>
-
 <body>
 
-    <div id="flipbook" aria-label="Flipbook viewer" role="region">
-        <!-- left/right pages are created dynamically -->
-        <!-- Optional click/drag zones if you want larger hit areas:
-    <div class="zone left"></div>
-    <div class="zone right"></div>
-    -->
+  <div id="flipbook" aria-label="Flipbook viewer" role="region">
+    <!-- Hover menu -->
+    <div class="menu-overlay" aria-label="Overlay controls">
+      <button class="btn" id="btnThumbs">Thumbnails</button>
+      <button class="btn" id="prevTop">⟨ Prev</button>
+      <button class="btn" id="nextTop">Next ⟩</button>
+
+      <span class="counter" id="counterTop"><span id="curTop">1</span> / <span id="totTop">—</span></span>
+
+      <div class="field" title="Jump to page">
+        <label for="pageJump" style="font-size:12px;opacity:.8;">Page</label>
+        <input id="pageJump" type="number" min="1" value="1" />
+        <button class="btn" id="btnGo">Go</button>
+      </div>
+
+      <div class="field" title="Zoom">
+        <button class="btn" id="zoomOut">−</button>
+        <span id="zoomLabel" style="font-weight:700;min-width:44px;text-align:center;">100%</span>
+        <button class="btn" id="zoomIn">+</button>
+        <button class="btn" id="zoomReset">Reset</button>
+      </div>
+
+      <a class="btn" id="downloadTop" href="#" download>⬇ Download</a>
+      <button class="btn" id="fsTop">⤢ Fullscreen</button>
     </div>
 
-    <div class="controls" aria-label="Controls">
-        <button id="prev" aria-label="Previous page">⟨ Prev</button>
-        <button id="next" aria-label="Next page">Next ⟩</button>
-        <div class="spacer"></div>
-        <span class="counter"><span id="cur">1</span> / <span id="total">—</span></span>
-        <a class="btn" id="download" href="#" download>⬇ Download</a>
-        <button id="fs" aria-label="Fullscreen">⤢ Fullscreen</button>
+    <!-- Inner spread for zoom transforms -->
+    <div id="spread"></div>
+
+    <!-- Thumbnail drawer -->
+    <div class="thumb-drawer" id="thumbDrawer" aria-label="Page thumbnails">
+      <div class="thumbs" id="thumbs"></div>
     </div>
+  </div>
 
-    <script>
-        // ---------- CONFIG ----------
-        const PDF_URL = "./2025%20cv%20portfolio%20no%20password.pdf";
-        const DOWNLOAD_URL = PDF_URL; // same file for download
-        // ----------------------------
+  <!-- Bottom controls (optional to keep) -->
+  <div class="controls" aria-label="Controls">
+    <button id="prev" aria-label="Previous page">⟨ Prev</button>
+    <button id="next" aria-label="Next page">Next ⟩</button>
+    <div class="spacer"></div>
+    <span class="counter"><span id="cur">1</span> / <span id="total">—</span></span>
+    <a class="btn" id="download" href="#" download>⬇ Download</a>
+    <button id="fs" aria-label="Fullscreen">⤢ Fullscreen</button>
+  </div>
 
-        const flipbook = document.getElementById('flipbook');
-        const prevBtn = document.getElementById('prev');
-        const nextBtn = document.getElementById('next');
-        const fsBtn = document.getElementById('fs');
-        const curEl = document.getElementById('cur');
-        const totEl = document.getElementById('total');
-        const dlA = document.getElementById('download');
-        dlA.href = DOWNLOAD_URL;
+  <script>
+    // ---------- CONFIG ----------
+    const PDF_URL = "https://raw.githubusercontent.com/your-user/your-repo/branch/your%20file.pdf";
+    const DOWNLOAD_URL = PDF_URL; // same file for download
+    // ----------------------------
 
-        let pdfDoc = null;
-        let total = 0;
-        let current = 1; // 1-based
+    const flipbook = document.getElementById('flipbook');
+    const spread = document.getElementById('spread');
 
-        // Keep references to created page elements for flipping
-        const pageEls = [];
+    // Bottom controls
+    const prevBtn = document.getElementById('prev');
+    const nextBtn = document.getElementById('next');
+    const fsBtn   = document.getElementById('fs');
+    const curEl   = document.getElementById('cur');
+    const totEl   = document.getElementById('total');
+    const dlA     = document.getElementById('download');
 
-        // Render all pages as images (simple + robust)
-        async function renderAllPages() {
-            pdfjsLib.GlobalWorkerOptions.workerSrc =
-                "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    // Top overlay controls
+    const prevTop = document.getElementById('prevTop');
+    const nextTop = document.getElementById('nextTop');
+    const fsTop   = document.getElementById('fsTop');
+    const curTop  = document.getElementById('curTop');
+    const totTop  = document.getElementById('totTop');
+    const dlTop   = document.getElementById('downloadTop');
 
-            const doc = await pdfjsLib.getDocument(PDF_URL).promise;
-            pdfDoc = doc;
-            total = doc.numPages;
-            totEl.textContent = total;
+    const pageJump = document.getElementById('pageJump');
+    const btnGo    = document.getElementById('btnGo');
 
-            // Clear existing
-            flipbook.querySelectorAll('.page').forEach(p => p.remove());
-            pageEls.length = 0;
+    const btnThumbs   = document.getElementById('btnThumbs');
+    const drawer      = document.getElementById('thumbDrawer');
+    const thumbsWrap  = document.getElementById('thumbs');
 
-            for (let i = 1; i <= total; i++) {
-                const page = await doc.getPage(i);
+    const zoomInBtn   = document.getElementById('zoomIn');
+    const zoomOutBtn  = document.getElementById('zoomOut');
+    const zoomResetBtn= document.getElementById('zoomReset');
+    const zoomLabel   = document.getElementById('zoomLabel');
 
-                // Scale factor: tune for quality/size. 1.5 is a good visual compromise.
-                const viewport = page.getViewport({
-                    scale: 1.5
-                });
+    // Set download links
+    dlA.href = DOWNLOAD_URL;
+    dlTop.href = DOWNLOAD_URL;
 
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
-                canvas.width = viewport.width;
-                canvas.height = viewport.height;
-                await page.render({
-                    canvasContext: ctx,
-                    viewport
-                }).promise;
+    let pdfDoc = null;
+    let total = 0;
+    let current = 1; // 1-based
 
-                const img = new Image();
-                img.src = canvas.toDataURL('image/jpeg', 0.9);
+    // Zoom state (CSS transform on #spread)
+    let zoom = 1;
+    const Z_MIN = 0.8, Z_MAX = 2.0, Z_STEP = 0.1;
+    function applyZoom(){
+      spread.style.transform = `scale(${zoom})`;
+      zoomLabel.textContent = Math.round(zoom * 100) + '%';
+    }
 
-                const el = document.createElement('div');
-                el.className = 'page' + ((i % 2 === 0) ? ' right' : '');
-                if (i % 2 === 0) el.style.left = '50%';
-                el.appendChild(img);
+    // Keep references to created page elements for flipping
+    const pageEls = [];
 
-                // Initial flipped state for pages before current
-                if (i < current) el.classList.add('flipped');
+    async function renderAllPages(){
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 
-                flipbook.appendChild(el);
-                pageEls.push(el);
-            }
+      const doc = await pdfjsLib.getDocument(PDF_URL).promise;
+      pdfDoc = doc;
+      total = doc.numPages;
+      totEl.textContent = totTop.textContent = total;
 
-            updateUI();
-        }
+      // Clear existing
+      spread.innerHTML = "";
+      pageEls.length = 0;
+      thumbsWrap.innerHTML = "";
 
-        function updateUI() {
-            curEl.textContent = current;
-            prevBtn.disabled = current <= 1;
-            nextBtn.disabled = current >= total;
-        }
+      for (let i = 1; i <= total; i++){
+        const page = await doc.getPage(i);
 
-        function flip(direction) {
-            if (direction === 'next') {
-                if (current >= total) return;
-                // Flip the current page to turned state
-                pageEls[current - 1]?.classList.add('flipped');
-                current++;
-            } else if (direction === 'prev') {
-                if (current <= 1) return;
-                // Unflip the previous page
-                current--;
-                pageEls[current - 1]?.classList.remove('flipped');
-            }
-            updateUI();
-        }
+        // Render main page image
+        const viewport = page.getViewport({ scale: 1.5 });
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        await page.render({ canvasContext: ctx, viewport }).promise;
 
-        // Buttons
-        nextBtn.addEventListener('click', () => flip('next'));
-        prevBtn.addEventListener('click', () => flip('prev'));
+        const img = new Image();
+        img.src = canvas.toDataURL('image/jpeg', 0.9);
 
-        // Keyboard
-        window.addEventListener('keydown', (e) => {
-            if (e.key === 'ArrowRight') flip('next');
-            if (e.key === 'ArrowLeft') flip('prev');
-        });
+        const el = document.createElement('div');
+        el.className = 'page' + ((i % 2 === 0) ? ' right' : '');
+        if (i % 2 === 0) el.style.left = '50%';
+        el.appendChild(img);
 
-        // Fullscreen
-        fsBtn.addEventListener('click', () => {
-            if (!document.fullscreenElement) flipbook.requestFullscreen?.();
-            else document.exitFullscreen?.();
-        });
+        if (i < current) el.classList.add('flipped');
 
-        // ---- Swipe / Drag gestures ----
-        let isPointerDown = false;
-        let startX = 0;
-        let startY = 0;
-        let lastX = 0;
-        const SWIPE_MIN = 40; // px threshold
-        const SWIPE_SLOPE = 1.7; // prefer horizontal (abs(dx) > 1.7*abs(dy))
+        spread.appendChild(el);
+        pageEls.push(el);
 
-        // We also give a tiny “follow finger” rotate effect to the top page for feedback.
-        function setActiveTilt(dx) {
-            const topIndex = current - 1; // zero-based
-            const topPage = pageEls[topIndex];
-            if (!topPage) return;
-
-            topPage.classList.add('active');
-            // tilt limited to ~10 degrees
-            const maxTilt = 10;
-            const tilt = Math.max(-maxTilt, Math.min(maxTilt, (dx / (flipbook.clientWidth * 0.5)) * maxTilt));
-            if (dx < 0) {
-                // swiping left -> next (tilt right page)
-                topPage.style.transform += ` rotateY(${tilt}deg)`;
-            } else if (dx > 0 && topIndex > 0) {
-                // swiping right -> prev: preview unflip by tilting the previous page slightly back
-                const prevPage = pageEls[topIndex - 1];
-                if (prevPage) {
-                    prevPage.style.transform = `rotateY(${Math.min(0, tilt)}deg)`;
-                    prevPage.classList.add('active');
-                }
-            }
-        }
-
-        function clearActiveTilt() {
-            pageEls.forEach(p => {
-                p.classList.remove('active');
-                // reset transform to base (respect flipped state)
-                p.style.transform = '';
-                if (p.classList.contains('flipped')) {
-                    if (p.classList.contains('right')) p.style.transform = 'rotateY(180deg)';
-                    else p.style.transform = 'rotateY(-180deg)';
-                }
-            });
-        }
-
-        const onPointerDown = (clientX, clientY) => {
-            isPointerDown = true;
-            startX = lastX = clientX;
-            startY = clientY;
-        };
-        const onPointerMove = (clientX, clientY) => {
-            if (!isPointerDown) return;
-            lastX = clientX;
-            const dx = clientX - startX;
-            const dy = clientY - startY;
-
-            // Only show tilt if it's primarily horizontal
-            if (Math.abs(dx) > SWIPE_MIN / 3 && Math.abs(dx) > SWIPE_SLOPE * Math.abs(dy)) {
-                clearActiveTilt();
-                setActiveTilt(dx);
-            }
-        };
-        const onPointerUp = (clientX, clientY) => {
-            if (!isPointerDown) return;
-            isPointerDown = false;
-            const dx = clientX - startX;
-            const dy = clientY - startY;
-
-            clearActiveTilt();
-
-            if (Math.abs(dx) >= SWIPE_MIN && Math.abs(dx) > SWIPE_SLOPE * Math.abs(dy)) {
-                if (dx < 0) flip('next'); // swipe left
-                else flip('prev'); // swipe right
-            }
-        };
-
-        // Mouse events
-        flipbook.addEventListener('mousedown', (e) => {
-            e.preventDefault();
-            onPointerDown(e.clientX, e.clientY);
-        });
-        window.addEventListener('mousemove', (e) => onPointerMove(e.clientX, e.clientY), {
-            passive: true
-        });
-        window.addEventListener('mouseup', (e) => onPointerUp(e.clientX, e.clientY));
-
-        // Touch events
-        flipbook.addEventListener('touchstart', (e) => {
-            if (!e.touches[0]) return;
-            onPointerDown(e.touches[0].clientX, e.touches[0].clientY);
-        }, {
-            passive: true
-        });
-
-        flipbook.addEventListener('touchmove', (e) => {
-            if (!e.touches[0]) return;
-            onPointerMove(e.touches[0].clientX, e.touches[0].clientY);
-        }, {
-            passive: true
-        });
-
-        flipbook.addEventListener('touchend', (e) => {
-            const t = e.changedTouches && e.changedTouches[0];
-            onPointerUp(t ? t.clientX : lastX, t ? t.clientY : 0);
-        });
-
-        // Init
+        // Build thumbnail (smaller render for speed)
         (async () => {
-            try {
-                await renderAllPages();
-            } catch (err) {
-                console.error('PDF load failed. Falling back to iframe.', err);
-                // Fallback: embed the PDF as-is (no flip)
-                const iframe = document.createElement('iframe');
-                iframe.src = PDF_URL;
-                iframe.style.cssText = "position:absolute;inset:0;border:0;width:100%;height:100%";
-                flipbook.innerHTML = "";
-                flipbook.appendChild(iframe);
-            }
-        })();
-    </script>
-</body>
+          const thumbViewport = page.getViewport({ scale: 0.25 });
+          const tcan = document.createElement('canvas');
+          const tctx = tcan.getContext('2d');
+          tcan.width = thumbViewport.width;
+          tcan.height = thumbViewport.height;
+          await page.render({ canvasContext: tctx, viewport: thumbViewport }).promise;
 
+          const thumb = document.createElement('div');
+          thumb.className = 'thumb';
+          thumb.dataset.index = i;
+          const timg = new Image();
+          timg.src = tcan.toDataURL('image/jpeg', 0.8);
+          const label = document.createElement('span');
+          label.className = 'label';
+          label.textContent = i;
+          thumb.appendChild(timg);
+          thumb.appendChild(label);
+          thumb.addEventListener('click', () => goToPage(i));
+          thumbsWrap.appendChild(thumb);
+
+          updateActiveThumb();
+        })();
+      }
+
+      updateUI();
+      applyZoom();
+    }
+
+    function updateActiveThumb(){
+      const nodes = thumbsWrap.querySelectorAll('.thumb');
+      nodes.forEach(n => n.classList.toggle('active', Number(n.dataset.index) === current));
+    }
+
+    function updateUI(){
+      curEl.textContent = curTop.textContent = current;
+      pageJump.value = current;
+      prevBtn.disabled = prevTop.disabled = current <= 1;
+      nextBtn.disabled = nextTop.disabled = current >= total;
+      updateActiveThumb();
+    }
+
+    function flip(direction){
+      if (direction === 'next'){
+        if (current >= total) return;
+        pageEls[current - 1]?.classList.add('flipped');
+        current++;
+      } else if (direction === 'prev'){
+        if (current <= 1) return;
+        current--;
+        pageEls[current - 1]?.classList.remove('flipped');
+      }
+      updateUI();
+    }
+
+    function goToPage(n){
+      n = Math.max(1, Math.min(total, Number(n)||1));
+      if (n === current) return;
+
+      // Flip/unflip to reach the target
+      if (n > current){
+        for (let i = current; i < n; i++){
+          pageEls[i - 1]?.classList.add('flipped');
+        }
+      } else {
+        for (let i = current - 1; i >= n; i--){
+          pageEls[i - 1]?.classList.remove('flipped');
+        }
+      }
+      current = n;
+      updateUI();
+    }
+
+    // Buttons (bottom)
+    nextBtn.addEventListener('click', () => flip('next'));
+    prevBtn.addEventListener('click', () => flip('prev'));
+
+    // Buttons (top overlay)
+    nextTop.addEventListener('click', () => flip('next'));
+    prevTop.addEventListener('click', () => flip('prev'));
+
+    // Jump
+    btnGo.addEventListener('click', () => goToPage(pageJump.value));
+    pageJump.addEventListener('keydown', (e)=>{ if(e.key==='Enter') goToPage(pageJump.value); });
+
+    // Thumbnails drawer toggle
+    btnThumbs.addEventListener('click', () => {
+      drawer.classList.toggle('open');
+    });
+
+    // Zoom controls
+    zoomInBtn.addEventListener('click', () => { zoom = Math.min(Z_MAX, +(zoom + Z_STEP).toFixed(2)); applyZoom(); });
+    zoomOutBtn.addEventListener('click', () => { zoom = Math.max(Z_MIN, +(zoom - Z_STEP).toFixed(2)); applyZoom(); });
+    zoomResetBtn.addEventListener('click', () => { zoom = 1; applyZoom(); });
+
+    // Keyboard
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight') flip('next');
+      if (e.key === 'ArrowLeft')  flip('prev');
+      if (e.key === '+') { zoom = Math.min(Z_MAX, +(zoom + Z_STEP).toFixed(2)); applyZoom(); }
+      if (e.key === '-') { zoom = Math.max(Z_MIN, +(zoom - Z_STEP).toFixed(2)); applyZoom(); }
+      if (e.key.toLowerCase() === 't') drawer.classList.toggle('open');
+    });
+
+    // Fullscreen
+    function toggleFS(){
+      if (!document.fullscreenElement) flipbook.requestFullscreen?.();
+      else document.exitFullscreen?.();
+    }
+    fsBtn.addEventListener('click', toggleFS);
+    fsTop.addEventListener('click', toggleFS);
+
+    // ---- Swipe / Drag gestures ----
+    let isPointerDown = false;
+    let startX = 0, startY = 0, lastX = 0;
+    const SWIPE_MIN = 40; const SWIPE_SLOPE = 1.7;
+
+    function setActiveTilt(dx){
+      const topIndex = current - 1;
+      const topPage = pageEls[topIndex];
+      if (!topPage) return;
+      topPage.classList.add('active');
+      const maxTilt = 10;
+      const tilt = Math.max(-maxTilt, Math.min(maxTilt, (dx / (flipbook.clientWidth * 0.5)) * maxTilt));
+      if (dx < 0){
+        topPage.style.transform += ` rotateY(${tilt}deg)`;
+      } else if (dx > 0 && topIndex > 0){
+        const prevPage = pageEls[topIndex - 1];
+        if (prevPage){
+          prevPage.style.transform = `rotateY(${Math.min(0, tilt)}deg)`;
+          prevPage.classList.add('active');
+        }
+      }
+    }
+    function clearActiveTilt(){
+      pageEls.forEach(p=>{
+        p.classList.remove('active');
+        p.style.transform = '';
+        if (p.classList.contains('flipped')){
+          if (p.classList.contains('right')) p.style.transform = 'rotateY(180deg)';
+          else p.style.transform = 'rotateY(-180deg)';
+        }
+      });
+    }
+    const onPointerDown = (clientX, clientY) => { isPointerDown = true; startX = lastX = clientX; startY = clientY; };
+    const onPointerMove = (clientX, clientY) => {
+      if (!isPointerDown) return;
+      lastX = clientX;
+      const dx = clientX - startX;
+      const dy = clientY - startY;
+      if (Math.abs(dx) > SWIPE_MIN/3 && Math.abs(dx) > SWIPE_SLOPE * Math.abs(dy)){
+        clearActiveTilt(); setActiveTilt(dx);
+      }
+    };
+    const onPointerUp = (clientX, clientY) => {
+      if (!isPointerDown) return;
+      isPointerDown = false;
+      const dx = clientX - startX;
+      const dy = clientY - startY;
+      clearActiveTilt();
+      if (Math.abs(dx) >= SWIPE_MIN && Math.abs(dx) > SWIPE_SLOPE * Math.abs(dy)){
+        if (dx < 0) flip('next'); else flip('prev');
+      }
+    };
+
+    // Mouse
+    flipbook.addEventListener('mousedown', (e)=>{ e.preventDefault(); onPointerDown(e.clientX, e.clientY); });
+    window.addEventListener('mousemove', (e)=> onPointerMove(e.clientX, e.clientY), { passive:true });
+    window.addEventListener('mouseup',   (e)=> onPointerUp(e.clientX, e.clientY));
+
+    // Touch
+    flipbook.addEventListener('touchstart', (e)=>{ if(!e.touches[0])return; onPointerDown(e.touches[0].clientX, e.touches[0].clientY); }, { passive:true });
+    flipbook.addEventListener('touchmove',  (e)=>{ if(!e.touches[0])return; onPointerMove(e.touches[0].clientX, e.touches[0].clientY); }, { passive:true });
+    flipbook.addEventListener('touchend',   (e)=>{ const t=e.changedTouches && e.changedTouches[0]; onPointerUp(t?t.clientX:lastX, t?t.clientY:0); });
+
+    // Init
+    (async () => {
+      try{
+        await renderAllPages();
+      }catch(err){
+        console.error('PDF load failed. Falling back to iframe.', err);
+        const iframe = document.createElement('iframe');
+        iframe.src = PDF_URL;
+        iframe.style.cssText = "position:absolute;inset:0;border:0;width:100%;height:100%";
+        spread.innerHTML = "";
+        spread.appendChild(iframe);
+      }
+    })();
+  </script>
+</body>
 </html>
